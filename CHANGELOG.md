@@ -1,9 +1,24 @@
 # Changelog
 
 All notable changes to HT-Manager are documented here, milestone by
-milestone, per `docs/superpowers/specs/2026-08-04-ht-manager-design.md`.
+milestone, per the project's internal design spec.
 
-## [Unreleased]
+## [1.0.0] — M8 — Production
+
+M7 (a read-only website API for hackertroupe.dev) was cut from scope
+earlier (see below) — the bot and the website are intentionally
+independent, so this closes out the milestone list at M8.
+
+- Docker hardening landed in M6.1 below: unprivileged containers, Postgres
+  bound to `127.0.0.1`, `restart: unless-stopped` on the long-running
+  services only.
+- README: Azure VM deployment notes (no inbound NSG rules needed beyond
+  SSH — the bot only makes outbound connections) and a backups section
+  (`pg_dump`/`psql` against the `ht_manager_postgres_data` volume, since
+  Discord-side resources are disposable by design and Postgres is the only
+  durable state).
+- `pyproject.toml` version bumped to `1.0.0`; description no longer
+  mentions the dropped API.
 
 ### Fixed — `/addctfmember` crashed on an unknown CTF ID
 

@@ -3,8 +3,6 @@
 Discord bot for HackerTroupe's CTF operations: curating and polling the next
 CTF, tracking participation, and syncing/announcing CTFTime results.
 
-Full design: `docs/superpowers/specs/2026-08-04-ht-manager-design.md`.
-
 ## Local development
 
 1. Copy `.env.example` to `.env` and fill in real values (Discord bot
@@ -46,9 +44,10 @@ Or run everything through Compose once `.env` is filled in:
 
 ## Deploying
 
-Compose is the deployment unit (spec §24: one small VM). `docker compose up
--d --build` brings up Postgres, runs `alembic upgrade head` as a one-shot
-migration job, and only then starts the bot.
+Compose is the deployment unit — one small VM running Postgres and the bot
+side by side. `docker compose up -d --build` brings up Postgres, runs
+`alembic upgrade head` as a one-shot migration job, and only then starts
+the bot.
 
 Before deploying:
 
@@ -64,6 +63,42 @@ Check on it with `docker compose logs -f ht-manager-bot`. The CTFTime result
 sync records its health in the `sync_state` table — `last_success_at` only
 advances on a fully clean run, and `last_error` holds the last failure.
 
+### Azure VM specifics
+
+The bot only makes outbound connections (Discord gateway, CTFTime, its own
+Postgres container) — it doesn't serve HTTP. The VM's Network Security Group
+needs no inbound rule beyond SSH; don't open 5432 or anything else inbound.
+
+1. Install Docker Engine + the Compose plugin on the VM (Azure's Ubuntu
+   images don't ship it — follow Docker's official install steps for the
+   distro, not the Snap package, which has known Compose-plugin issues).
+2. Clone the repo, `cp .env.example .env` and fill it in (see below), set a
+   real `POSTGRES_PASSWORD`.
+3. `docker compose up -d --build`.
+4. Confirm `restart: unless-stopped` is enough for your needs — it survives
+   container crashes and `docker` daemon restarts, but a full VM
+   deallocate/reallocate (e.g. an Azure for Students credit-triggered
+   shutdown) needs the Docker daemon itself enabled at boot
+   (`systemctl enable docker`, on by default on Azure's Ubuntu images).
+
+### Backups
+
+The only durable state is the `ht_manager_postgres_data` volume — Discord
+roles/forums are disposable by design (spec §8), so backups only need to
+cover Postgres. Ad hoc dump:
+
+```bash
+docker compose exec postgres pg_dump -U ht_manager ht_manager > backup-$(date +%F).sql
+```
+
+For unattended backups, cron the same command on the host (outside the
+container) and rotate old dumps; there's no in-repo backup job, so this is
+an operational step you own on the deployment VM. Restore with:
+
+```bash
+cat backup-2026-08-12.sql | docker compose exec -T postgres psql -U ht_manager ht_manager
+```
+
 ## Commands
 
 Admin-only unless noted: `/addctf`, `/editctf`, `/deletectf`, `/nextctf`,
@@ -74,7 +109,10 @@ Admin-only unless noted: `/addctf`, `/editctf`, `/deletectf`, `/nextctf`,
 
 ## Project status
 
-M0 through M6 complete: CTF data and CTFTime ingestion, `/nextctf` polling,
-event setup (roles/workspace/participation), retention cleanup, result sync,
-and end-of-CTF summaries. See `CHANGELOG.md` for details and the spec's
-milestone table (§25) for what's next.
+v1.0. M0 through M6 and M8 complete: CTF data and CTFTime ingestion,
+`/nextctf` polling, event setup (roles/dedicated forum workspace/
+participation), retention cleanup, result sync, end-of-CTF summaries, and
+production hardening (unprivileged containers, Postgres bound to localhost,
+Azure deployment notes, backups). M7 (a read-only website API) is out of
+scope — the bot and hackertroupe.dev are intentionally independent. See
+`CHANGELOG.md` for details.
