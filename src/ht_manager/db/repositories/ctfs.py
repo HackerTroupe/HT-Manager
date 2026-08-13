@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ht_manager.db.models.ctf import CTF, CTFStatus
@@ -39,6 +39,18 @@ async def delete(session: AsyncSession, ctf: CTF) -> None:
 async def list_non_terminal(session: AsyncSession) -> list[CTF]:
     result = await session.execute(select(CTF).where(CTF.status.in_(NON_TERMINAL_STATUSES)))
     return list(result.scalars().all())
+
+
+async def list_page(session: AsyncSession, *, limit: int, offset: int) -> list[CTF]:
+    result = await session.execute(
+        select(CTF).order_by(CTF.id.desc()).limit(limit).offset(offset)
+    )
+    return list(result.scalars().all())
+
+
+async def count(session: AsyncSession) -> int:
+    result = await session.execute(select(func.count()).select_from(CTF))
+    return result.scalar_one()
 
 
 RESULT_ELIGIBLE_STATUSES = (CTFStatus.ACTIVE, CTFStatus.FINISHED, CTFStatus.ARCHIVED)

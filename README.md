@@ -104,8 +104,8 @@ cat backup-2026-08-12.sql | docker compose exec -T postgres psql -U ht_manager h
 Admin-only unless noted: `/addctf`, `/editctf`, `/deletectf`, `/nextctf`,
 `/resolvepoll`, `/setupctf`, `/addctfmember`, `/removectfmember`,
 `/addresult`, `/editresult`, `/resultsync`, `/setcategory`, `/endctf`,
-`/archivectf`. Open to everyone: `/ping`, `/ctfmembers`, `/participation`,
-`/summary`.
+`/archivectf`. Open to everyone: `/ping`, `/ctfmembers`, `/listctfs`,
+`/participation`, `/summary`.
 
 ## Project status
 

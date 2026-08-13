@@ -17,6 +17,7 @@ from ht_manager.bot.commands.deletectf import register_deletectf_command
 from ht_manager.bot.commands.editctf import register_editctf_command
 from ht_manager.bot.commands.editresult import register_editresult_command
 from ht_manager.bot.commands.endctf import register_endctf_command
+from ht_manager.bot.commands.listctfs import register_listctfs_command
 from ht_manager.bot.commands.nextctf import register_nextctf_command
 from ht_manager.bot.commands.participation import register_participation_command
 from ht_manager.bot.commands.ping import register_ping_command
@@ -59,6 +60,7 @@ class HTManagerBot(commands.Bot):
         register_resolvepoll_command(self)
         register_setupctf_command(self)
         register_ctfmembers_command(self)
+        register_listctfs_command(self)
         register_addctfmember_command(self)
         register_removectfmember_command(self)
         register_participation_command(self)
