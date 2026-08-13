@@ -5,6 +5,15 @@ milestone, per the project's internal design spec.
 
 ## [Unreleased]
 
+### Added — LICENSE and expanded docs
+
+Repo went public (source-available, read-only — see `LICENSE`). Added a
+LICENSE file, restructured README.md with badges/TOC, and split the
+command reference, deployment guide, and architecture notes out into
+`docs/COMMANDS.md`, `docs/DEPLOYMENT.md`, and `docs/ARCHITECTURE.md`.
+`.gitignore` now only excludes `docs/superpowers/` (internal planning
+docs) instead of all of `docs/`, so these are tracked.
+
 ### Added — `/listctfs`
 
 Lists every CTF, newest first, 10 per page with Prev/Next buttons. Open to

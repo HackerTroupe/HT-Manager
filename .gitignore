@@ -7,5 +7,5 @@ __pycache__/
 dist/
 *.egg-info/
 CLAUDE.md
-docs/
+docs/superpowers/
 .superpowers/
