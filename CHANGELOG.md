@@ -3,6 +3,14 @@
 All notable changes to HT-Manager are documented here, milestone by
 milestone, per the project's internal design spec.
 
+## [Unreleased]
+
+### Added — `/listctfs`
+
+Lists every CTF, newest first, 10 per page with Prev/Next buttons. Open to
+everyone (read-only), matching `/ctfmembers`. Backed by two new
+`ctfs_repo` functions, `list_page` and `count`.
+
 ## [1.0.0] — M8 — Production
 
 M7 (a read-only website API for hackertroupe.dev) was cut from scope
