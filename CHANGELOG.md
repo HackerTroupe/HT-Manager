@@ -5,6 +5,22 @@ milestone, per the project's internal design spec.
 
 ## [Unreleased]
 
+### Added — `/cancelpoll`
+
+There was no way to abandon an `OPEN` poll before it closed on its own —
+`cancel_draft` only worked pre-publish (`DRAFTING`), and the only paths out
+of `OPEN` were the poll expiring naturally or `/resolvepoll` (which needs a
+`TIED` result). A poll left running for its full `duration_hours` blocked
+every other CTF-lifecycle command via the non-terminal-CTF guard, with no
+recovery short of waiting.
+
+New `polls_service.cancel_open_poll()` finds the currently `OPEN` poll,
+cancels every one of its candidate CTFs (there's no winner to spare, unlike
+`finalize`), and marks the poll `CANCELLED`. Exposed as admin-only
+`/cancelpoll` (no arguments — only one poll can be open at a time), which
+also best-effort ends the underlying Discord poll message so voters see it
+closed. Spec §15.1's `POLLING` → `CANCELLED` row is updated to point at it.
+
 ### Added — `/forcestartctf` and a configurable poll duration
 
 Two `/nextctf` limitations, closed:

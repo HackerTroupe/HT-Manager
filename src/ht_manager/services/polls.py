@@ -138,6 +138,34 @@ async def cancel_draft(session: AsyncSession, *, actor_discord_id: int, poll_id:
     )
 
 
+async def cancel_open_poll(session: AsyncSession, *, actor_discord_id: int) -> Poll:
+    """`/cancelpoll`: cancels the currently `OPEN` poll before its `closes_at`,
+    for when an admin needs to abandon a vote in progress rather than wait for
+    the scheduled `close_expired_polls` job. Every candidate CTF (not just the
+    losers) is cancelled — unlike `finalize`, there's no winner to spare."""
+    poll = await polls_repo.get_open(session)
+    if poll is None:
+        raise PollNotFoundError("No open poll to cancel")
+
+    options = await polls_repo.list_options(session, poll.id)
+    for option in options:
+        await _cancel_candidate(session, actor_discord_id, option.ctf_id)
+
+    poll.status = PollStatus.CANCELLED
+    await session.flush()
+
+    await audit_log_repo.record(
+        session,
+        discord_user_id=actor_discord_id,
+        action="poll_cancelled",
+        target_table="polls",
+        target_id=poll.id,
+        before=None,
+        after=None,
+    )
+    return poll
+
+
 async def publish(
     session: AsyncSession,
     *,

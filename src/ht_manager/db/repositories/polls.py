@@ -47,6 +47,11 @@ async def add_vote(session: AsyncSession, vote: PollVote) -> PollVote:
     return vote
 
 
+async def get_open(session: AsyncSession) -> Poll | None:
+    result = await session.execute(select(Poll).where(Poll.status == PollStatus.OPEN))
+    return result.scalars().first()
+
+
 async def list_expired_open(session: AsyncSession, now: datetime) -> list[Poll]:
     result = await session.execute(
         select(Poll).where(Poll.status == PollStatus.OPEN, Poll.closes_at <= now)

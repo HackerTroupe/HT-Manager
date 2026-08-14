@@ -139,6 +139,22 @@ async def _open_and_publish(session: AsyncSession, names: list[str]) -> tuple[in
     return poll.id, ctf_ids
 
 
+async def test_cancel_open_poll_cancels_poll_and_all_candidates(db_session: AsyncSession) -> None:
+    poll_id, (a, b) = await _open_and_publish(db_session, ["A", "B"])
+
+    poll = await polls_service.cancel_open_poll(db_session, actor_discord_id=1)
+
+    assert poll.id == poll_id
+    assert poll.status is PollStatus.CANCELLED
+    assert (await ctfs_repo.get(db_session, a)).status is CTFStatus.CANCELLED
+    assert (await ctfs_repo.get(db_session, b)).status is CTFStatus.CANCELLED
+
+
+async def test_cancel_open_poll_rejects_when_no_open_poll(db_session: AsyncSession) -> None:
+    with pytest.raises(polls_service.PollNotFoundError):
+        await polls_service.cancel_open_poll(db_session, actor_discord_id=1)
+
+
 async def test_finalize_declares_clear_winner(db_session: AsyncSession) -> None:
     poll_id, (a, b) = await _open_and_publish(db_session, ["A", "B"])
     poll = await polls_service.finalize(

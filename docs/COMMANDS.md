@@ -12,6 +12,7 @@ hold one of the roles in `ADMIN_ROLE_IDS` and be in the configured guild
 | `/resolvepoll` | Admin | Manually picks the winner when a poll ties. |
 | `/setupctf <ctf_id>` | Admin | Retries role/workspace creation for a CTF — safe to re-run after a partial failure. |
 | `/forcestartctf <ctf_id>` | Admin | Skips the poll: takes a `DRAFT` CTF straight to `ACTIVE` (role + workspace created, but no voters to assign the role to — follow up with `/addctfmember`). Blocks if another CTF is already in progress, same as `/nextctf`. |
+| `/cancelpoll` | Admin | Cancels the currently open poll before it closes on its own — every candidate CTF reverts to `CANCELLED`, so `/nextctf` can start a fresh cycle right away instead of waiting for `closes_at`. |
 | `/addctf <name> <year> <start_at> <end_at> …` | Admin | Adds a CTF to the database as a draft, bypassing the poll flow (private events, backfilling history). |
 | `/editctf <ctf_id> …` | Admin | Corrects a CTF's metadata. |
 | `/deletectf <ctf_id>` | Admin | Hard-deletes a draft CTF (only drafts — anything with votes or results is kept for history). |
