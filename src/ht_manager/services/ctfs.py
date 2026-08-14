@@ -12,7 +12,7 @@ from ht_manager.services.ctftime import CTFTimeEvent
 
 # Spec §15.1: transitions not listed here are invalid and must be rejected.
 ALLOWED_TRANSITIONS: dict[CTFStatus, set[CTFStatus]] = {
-    CTFStatus.DRAFT: {CTFStatus.POLLING, CTFStatus.CANCELLED},
+    CTFStatus.DRAFT: {CTFStatus.POLLING, CTFStatus.SELECTED, CTFStatus.CANCELLED},
     CTFStatus.POLLING: {CTFStatus.SELECTED, CTFStatus.TIED, CTFStatus.CANCELLED},
     CTFStatus.TIED: {CTFStatus.SELECTED, CTFStatus.CANCELLED},
     CTFStatus.SELECTED: {CTFStatus.ACTIVE, CTFStatus.CANCELLED},

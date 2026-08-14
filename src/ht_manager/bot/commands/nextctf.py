@@ -73,13 +73,13 @@ class PublishButton(discord.ui.Button):
         await interaction.response.defer()
         poll_message = discord.Poll(
             question="Vote for the next CTF!",
-            duration=timedelta(hours=polls_service.DEFAULT_POLL_DURATION_HOURS),
+            duration=timedelta(hours=view.duration_hours),
         )
         for name in view.candidates.values():
             poll_message.add_answer(text=name[:55])
 
         message = await interaction.channel.send(poll=poll_message)
-        closes_at = datetime.now(UTC) + timedelta(hours=polls_service.DEFAULT_POLL_DURATION_HOURS)
+        closes_at = datetime.now(UTC) + timedelta(hours=view.duration_hours)
 
         async with view.session_factory() as session, session.begin():
             await polls_service.publish(
@@ -92,8 +92,7 @@ class PublishButton(discord.ui.Button):
 
         view.stop()
         await interaction.edit_original_response(
-            content="Poll published! Votes close in "
-            f"{polls_service.DEFAULT_POLL_DURATION_HOURS}h.",
+            content=f"Poll published! Votes close in {view.duration_hours}h.",
             embed=None,
             view=None,
         )
@@ -122,13 +121,20 @@ class CancelButton(discord.ui.Button):
 
 class NextCtfDraftView(discord.ui.View):
     def __init__(
-        self, *, poll_id: int, candidates: dict[int, str], admin_id: int, session_factory
+        self,
+        *,
+        poll_id: int,
+        candidates: dict[int, str],
+        admin_id: int,
+        session_factory,
+        duration_hours: int,
     ) -> None:
         super().__init__(timeout=900)
         self.poll_id = poll_id
         self.candidates = candidates
         self.admin_id = admin_id
         self.session_factory = session_factory
+        self.duration_hours = duration_hours
         self.rebuild_items()
 
     def rebuild_items(self) -> None:
@@ -144,10 +150,25 @@ def register_nextctf_command(bot: Bot) -> None:
         name="nextctf", description="Fetch and curate upcoming CTFs, then start a poll"
     )
     @admin_only()
-    @discord.app_commands.describe(window_days="How many days ahead to look on CTFTime")
+    @discord.app_commands.describe(
+        window_days="How many days ahead to look on CTFTime",
+        duration_hours=(
+            "How long the poll stays open, in hours "
+            f"(1-{polls_service.MAX_POLL_DURATION_HOURS}; "
+            f"default {polls_service.DEFAULT_POLL_DURATION_HOURS})"
+        ),
+    )
     async def nextctf(
-        interaction: discord.Interaction, window_days: int = DEFAULT_WINDOW_DAYS
+        interaction: discord.Interaction,
+        window_days: int = DEFAULT_WINDOW_DAYS,
+        duration_hours: int | None = None,
     ) -> None:
+        try:
+            resolved_duration_hours = polls_service.resolve_poll_duration_hours(duration_hours)
+        except ValueError as exc:
+            await interaction.response.send_message(str(exc), ephemeral=True)
+            return
+
         await interaction.response.defer()
         session_factory = interaction.client.session_factory  # type: ignore[attr-defined]
 
@@ -203,5 +224,6 @@ def register_nextctf_command(bot: Bot) -> None:
             candidates=candidates,
             admin_id=interaction.user.id,
             session_factory=session_factory,
+            duration_hours=resolved_duration_hours,
         )
         await interaction.followup.send(embed=_build_embed(candidates), view=view)

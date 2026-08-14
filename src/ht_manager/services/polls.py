@@ -18,6 +18,8 @@ from ht_manager.services import participation as participation_service
 # Discord native polls allow at most 10 answers; leave headroom.
 MAX_CANDIDATES = 8
 DEFAULT_POLL_DURATION_HOURS = 48
+# Discord's native-poll API caps duration at 32 days.
+MAX_POLL_DURATION_HOURS = 32 * 24
 
 
 class PollNotFoundError(Exception):
@@ -30,6 +32,19 @@ class InvalidPollStateError(Exception):
 
 class NotEnoughCandidatesError(Exception):
     pass
+
+
+def resolve_poll_duration_hours(duration_hours: int | None) -> int:
+    """`/nextctf`'s `duration_hours` param, validated against Discord's own
+    native-poll bounds (1 to `MAX_POLL_DURATION_HOURS`); `None` keeps the
+    `DEFAULT_POLL_DURATION_HOURS` default of 48h."""
+    if duration_hours is None:
+        return DEFAULT_POLL_DURATION_HOURS
+    if not 1 <= duration_hours <= MAX_POLL_DURATION_HOURS:
+        raise ValueError(
+            f"duration_hours must be between 1 and {MAX_POLL_DURATION_HOURS} (got {duration_hours})"
+        )
+    return duration_hours
 
 
 async def open_draft(
@@ -304,6 +319,42 @@ async def resolve_tie(session: AsyncSession, *, actor_discord_id: int, ctf_id: i
         after={"winning_ctf_id": ctf_id},
     )
     return poll
+
+
+async def force_start(
+    session_factory,
+    *,
+    actor_discord_id: int,
+    bot,
+    ctf_id: int,
+    guild_id: int,
+    category_id: int,
+    retention_days: int = 60,
+) -> None:
+    """Admin bypass of the poll workflow (`/forcestartctf`): `DRAFT` straight
+    to `SELECTED`, then the same winner-resolution sequence `setup_ctf_resources`
+    already runs for a normal poll win. There's no poll and no voters, so the
+    role is created but nobody is assigned it — the admin adds members via
+    `/addctfmember` afterward."""
+    async with session_factory() as session, session.begin():
+        ctf = await ctfs_repo.get(session, ctf_id)
+        if ctf is None:
+            raise ctfs_service.CTFNotFoundError(f"CTF {ctf_id} not found")
+        if ctf.status is not CTFStatus.DRAFT:
+            raise InvalidPollStateError(f"CTF {ctf_id} is {ctf.status.value}, not draft")
+        await ctfs_service.transition(
+            session, actor_discord_id=actor_discord_id, ctf=ctf, new_status=CTFStatus.SELECTED
+        )
+
+    await setup_ctf_resources(
+        session_factory,
+        actor_discord_id=actor_discord_id,
+        bot=bot,
+        ctf_id=ctf_id,
+        guild_id=guild_id,
+        category_id=category_id,
+        retention_days=retention_days,
+    )
 
 
 async def setup_ctf_resources(

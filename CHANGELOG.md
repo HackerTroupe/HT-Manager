@@ -5,6 +5,29 @@ milestone, per the project's internal design spec.
 
 ## [Unreleased]
 
+### Added — `/forcestartctf` and a configurable poll duration
+
+Two `/nextctf` limitations, closed:
+
+- **Custom poll deadline.** `/nextctf` hardcoded `DEFAULT_POLL_DURATION_HOURS`
+  (48h) into both the native Discord poll and the `closes_at` it stored, with
+  no way to override it. It now takes an optional `duration_hours` param,
+  validated by new `polls_service.resolve_poll_duration_hours()` against
+  Discord's own native-poll bound (1-768h, i.e. 32 days) — an out-of-range
+  value is rejected before anything is created, rather than failing inside
+  Discord's API. `NextCtfDraftView` carries the resolved value through to
+  the `PublishButton` callback instead of re-reading the module constant.
+- **Starting a CTF without a poll.** Every path to `ACTIVE` went through
+  `POLLING`/`SELECTED` — there was no way to activate a `DRAFT` CTF directly.
+  Spec §15.1 now documents a `DRAFT` → `SELECTED` transition, and
+  `services/ctfs.py`'s `ALLOWED_TRANSITIONS` allows it. New
+  `polls_service.force_start()` runs that transition, then the same
+  `setup_ctf_resources()` winner-resolution sequence a clean poll win uses —
+  minus the vote-tallying steps, since there's no poll to read voters from
+  (the role is created but assigned to nobody; the admin follows up with
+  `/addctfmember`). Exposed as admin-only `/forcestartctf <ctf_id>`, which
+  blocks on an already-in-progress CTF the same way `/nextctf` does.
+
 ### Added — LICENSE and expanded docs
 
 Repo went public (source-available, read-only — see `LICENSE`). Added a

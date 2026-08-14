@@ -89,6 +89,15 @@ async def test_transition_rejects_invalid_target(db_session: AsyncSession) -> No
         )
 
 
+async def test_transition_allows_draft_direct_to_selected(db_session: AsyncSession) -> None:
+    """`/forcestartctf` bypasses `POLLING` entirely (spec §15.1 addendum)."""
+    ctf = await _make_draft(db_session)
+    ctf = await ctfs_service.transition(
+        db_session, actor_discord_id=1, ctf=ctf, new_status=CTFStatus.SELECTED
+    )
+    assert ctf.status is CTFStatus.SELECTED
+
+
 async def test_transition_allows_documented_path(db_session: AsyncSession) -> None:
     ctf = await _make_draft(db_session)
     ctf = await ctfs_service.transition(

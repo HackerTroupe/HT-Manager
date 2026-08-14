@@ -25,6 +25,26 @@ async def _make_ctf(session: AsyncSession, name: str) -> int:
     return ctf.id
 
 
+def test_resolve_poll_duration_hours_defaults_when_not_given() -> None:
+    assert (
+        polls_service.resolve_poll_duration_hours(None) == polls_service.DEFAULT_POLL_DURATION_HOURS
+    )
+
+
+def test_resolve_poll_duration_hours_accepts_a_custom_value() -> None:
+    assert polls_service.resolve_poll_duration_hours(6) == 6
+
+
+def test_resolve_poll_duration_hours_rejects_zero_or_negative() -> None:
+    with pytest.raises(ValueError):
+        polls_service.resolve_poll_duration_hours(0)
+
+
+def test_resolve_poll_duration_hours_rejects_above_discord_max() -> None:
+    with pytest.raises(ValueError):
+        polls_service.resolve_poll_duration_hours(polls_service.MAX_POLL_DURATION_HOURS + 1)
+
+
 async def test_open_draft_creates_poll_and_options(db_session: AsyncSession) -> None:
     ctf_a = await _make_ctf(db_session, "A")
     ctf_b = await _make_ctf(db_session, "B")
@@ -281,6 +301,72 @@ async def test_setup_ctf_resources_is_idempotent_once_active(
     await polls_service.setup_ctf_resources(db_session_factory, **kwargs)
 
     assert call_count == 1
+
+
+async def test_force_start_activates_a_draft_ctf_without_a_poll(
+    db_session_factory: async_sessionmaker[AsyncSession], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def fake_create_role(bot, *, guild_id, name):
+        return 555
+
+    async def fake_create_ctf_forum(bot, *, guild_id, category_id, ctf_name):
+        return 666
+
+    async def fake_create_general_post(bot, *, guild_id, forum_channel_id, ctf_name):
+        return 777
+
+    calls: dict[str, object] = {}
+
+    async def fake_assign_role(bot, *, guild_id, role_id, user_ids):
+        calls["assigned"] = (role_id, list(user_ids))
+
+    monkeypatch.setattr(polls_service.discord_resources, "create_role", fake_create_role)
+    monkeypatch.setattr(polls_service.discord_resources, "create_ctf_forum", fake_create_ctf_forum)
+    monkeypatch.setattr(
+        polls_service.discord_resources, "create_general_post", fake_create_general_post
+    )
+    monkeypatch.setattr(polls_service.discord_resources, "assign_role", fake_assign_role)
+
+    async with db_session_factory() as session, session.begin():
+        ctf_id = await _make_ctf(session, "Solo")
+
+    await polls_service.force_start(
+        db_session_factory,
+        actor_discord_id=1,
+        bot=object(),
+        ctf_id=ctf_id,
+        guild_id=1,
+        category_id=2,
+    )
+
+    assert calls["assigned"] == (555, [])
+    async with db_session_factory() as session:
+        ctf = await ctfs_repo.get(session, ctf_id)
+        assert ctf.status is CTFStatus.ACTIVE
+        resource = await resources_repo.get_by_ctf_id(session, ctf_id)
+        assert resource is not None
+        assert resource.role_id == 555
+
+
+async def test_force_start_rejects_non_draft_ctf(
+    db_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with db_session_factory() as session, session.begin():
+        ctf_id = await _make_ctf(session, "Solo")
+        ctf = await ctfs_repo.get(session, ctf_id)
+        await ctfs_service.transition(
+            session, actor_discord_id=1, ctf=ctf, new_status=CTFStatus.POLLING
+        )
+
+    with pytest.raises(polls_service.InvalidPollStateError):
+        await polls_service.force_start(
+            db_session_factory,
+            actor_discord_id=1,
+            bot=object(),
+            ctf_id=ctf_id,
+            guild_id=1,
+            category_id=2,
+        )
 
 
 async def test_setup_ctf_resources_records_role_before_creating_workspace(
