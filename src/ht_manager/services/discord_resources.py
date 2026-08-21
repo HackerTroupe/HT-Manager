@@ -42,22 +42,74 @@ async def _get_category(guild: discord.Guild, category_id: int) -> discord.Categ
     return channel
 
 
+def _ctf_forum_overwrites(
+    guild: discord.Guild, role: discord.Role
+) -> dict[discord.Role, discord.PermissionOverwrite]:
+    return {
+        guild.default_role: discord.PermissionOverwrite(view_channel=False),
+        role: discord.PermissionOverwrite(
+            view_channel=True,
+            read_message_history=True,
+            send_messages=True,
+            create_public_threads=True,
+            send_messages_in_threads=True,
+        ),
+    }
+
+
 async def create_ctf_forum(
-    bot: discord.Client, *, guild_id: int, category_id: int, ctf_name: str
+    bot: discord.Client,
+    *,
+    guild_id: int,
+    category_id: int,
+    ctf_name: str,
+    role_id: int,
 ) -> int:
-    """Creates a dedicated Forum channel for the CTF under `category_id`
-    (spec §8). One forum per CTF, not a shared one — the CTF role exists
-    for pinging/organization, not access control. Returns the forum
-    channel's ID."""
+    """Creates a private CTF forum visible only to the CTF role and admins."""
     guild = await _get_guild(bot, guild_id)
     category = await _get_category(guild, category_id)
+    role = guild.get_role(role_id)
+    if role is None:
+        raise DiscordResourceError(f"Role {role_id} not found in guild {guild_id}")
+
     try:
         forum = await guild.create_forum(
-            name=ctf_name, category=category, reason="CTF workspace forum"
+            name=ctf_name,
+            category=category,
+            overwrites=_ctf_forum_overwrites(guild, role),
+            reason="CTF workspace forum",
         )
     except discord.HTTPException as exc:
         raise DiscordResourceError(f"Could not create forum channel for {ctf_name!r}") from exc
     return forum.id
+
+
+async def configure_ctf_forum(
+    bot: discord.Client, *, guild_id: int, forum_channel_id: int, role_id: int
+) -> None:
+    guild = await _get_guild(bot, guild_id)
+    channel = guild.get_channel(forum_channel_id)
+    if channel is None:
+        try:
+            channel = await guild.fetch_channel(forum_channel_id)
+        except discord.HTTPException as exc:
+            raise DiscordResourceError(
+                f"Could not fetch forum channel {forum_channel_id}"
+            ) from exc
+    if not isinstance(channel, discord.ForumChannel):
+        raise DiscordResourceError(f"Channel {forum_channel_id} is not a forum channel")
+    role = guild.get_role(role_id)
+    if role is None:
+        raise DiscordResourceError(f"Role {role_id} not found in guild {guild_id}")
+    try:
+        await channel.edit(
+            overwrites=_ctf_forum_overwrites(guild, role),
+            reason="Enforce private CTF workspace permissions",
+        )
+    except discord.HTTPException as exc:
+        raise DiscordResourceError(
+            f"Could not configure permissions for forum channel {forum_channel_id}"
+        ) from exc
 
 
 async def create_general_post(
@@ -119,14 +171,20 @@ async def assign_role(
     if role is None:
         raise DiscordResourceError(f"Role {role_id} not found in guild {guild_id}")
 
+    failed_user_ids: list[int] = []
     for user_id in user_ids:
         try:
             member = guild.get_member(user_id) or await guild.fetch_member(user_id)
             await member.add_roles(role, reason="CTF participant")
         except discord.HTTPException:
+            failed_user_ids.append(user_id)
             logger.warning(
                 "Could not assign role %s to user_id=%s", role_id, user_id, exc_info=True
             )
+    if failed_user_ids:
+        raise DiscordResourceError(
+            f"Could not assign role {role_id} to participant(s): {failed_user_ids}"
+        )
 
 
 async def delete_role(bot: discord.Client, *, guild_id: int, role_id: int) -> None:

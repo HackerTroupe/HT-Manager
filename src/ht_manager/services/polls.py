@@ -10,6 +10,7 @@ from ht_manager.db.models.poll import Poll, PollOption, PollStatus, PollVote
 from ht_manager.db.repositories import audit_log as audit_log_repo
 from ht_manager.db.repositories import ctf_discord_resources as resources_repo
 from ht_manager.db.repositories import ctfs as ctfs_repo
+from ht_manager.db.repositories import participation as participation_repo
 from ht_manager.db.repositories import polls as polls_repo
 from ht_manager.services import ctfs as ctfs_service
 from ht_manager.services import discord_resources
@@ -405,9 +406,7 @@ async def setup_ctf_resources(
         ctf = await ctfs_repo.get(session, ctf_id)
     if ctf is None:
         raise ctfs_service.CTFNotFoundError(f"CTF {ctf_id} not found")
-    if ctf.status is CTFStatus.ACTIVE:
-        return
-    if ctf.status is not CTFStatus.SELECTED:
+    if ctf.status not in {CTFStatus.SELECTED, CTFStatus.ACTIVE}:
         raise InvalidPollStateError(f"CTF {ctf_id} is {ctf.status.value}, not selected")
 
     async with session_factory() as session:
@@ -432,7 +431,11 @@ async def setup_ctf_resources(
 
     if forum_channel_id is None:
         forum_channel_id = await discord_resources.create_ctf_forum(
-            bot, guild_id=guild_id, category_id=category_id, ctf_name=ctf.name
+            bot,
+            guild_id=guild_id,
+            category_id=category_id,
+            ctf_name=ctf.name,
+            role_id=role_id,
         )
         await _save_resource(
             session_factory,
@@ -440,6 +443,13 @@ async def setup_ctf_resources(
             cleanup_after=cleanup_after,
             forum_channel_id=forum_channel_id,
         )
+
+    await discord_resources.configure_ctf_forum(
+        bot,
+        guild_id=guild_id,
+        forum_channel_id=forum_channel_id,
+        role_id=role_id,
+    )
 
     if thread_id is None:
         thread_id = await discord_resources.create_general_post(
@@ -450,11 +460,15 @@ async def setup_ctf_resources(
         )
 
     async with session_factory() as session, session.begin():
-        voter_ids = await polls_repo.list_voter_ids_for_ctf(session, ctf_id)
-        for voter_id in voter_ids:
-            await participation_service.record_from_vote(
-                session, ctf_id=ctf_id, discord_user_id=voter_id
-            )
+        if ctf.status is CTFStatus.SELECTED:
+            voter_ids = await polls_repo.list_voter_ids_for_ctf(session, ctf_id)
+            for voter_id in voter_ids:
+                await participation_service.record_from_vote(
+                    session, ctf_id=ctf_id, discord_user_id=voter_id
+                )
+        else:
+            participants = await participation_repo.list_for_ctf(session, ctf_id)
+            voter_ids = [participant.discord_user_id for participant in participants]
 
     await discord_resources.assign_role(bot, guild_id=guild_id, role_id=role_id, user_ids=voter_ids)
 
@@ -462,9 +476,10 @@ async def setup_ctf_resources(
         ctf = await ctfs_repo.get(session, ctf_id)
         if ctf is None:
             raise ctfs_service.CTFNotFoundError(f"CTF {ctf_id} not found")
-        await ctfs_service.transition(
-            session, actor_discord_id=actor_discord_id, ctf=ctf, new_status=CTFStatus.ACTIVE
-        )
+        if ctf.status is CTFStatus.SELECTED:
+            await ctfs_service.transition(
+                session, actor_discord_id=actor_discord_id, ctf=ctf, new_status=CTFStatus.ACTIVE
+            )
 
 
 async def _save_resource(

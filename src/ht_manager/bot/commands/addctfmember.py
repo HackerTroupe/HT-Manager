@@ -4,6 +4,8 @@ import discord
 from discord.ext.commands import Bot
 
 from ht_manager.bot.permissions import admin_only
+from ht_manager.db.repositories import ctf_discord_resources as resources_repo
+from ht_manager.services import discord_resources
 from ht_manager.services import participation as participation_service
 
 
@@ -23,10 +25,27 @@ def register_addctfmember_command(bot: Bot) -> None:
                     ctf_id=ctf_id,
                     discord_user_id=member.id,
                 )
-        except (
-            participation_service.CTFNotFoundError,
-            participation_service.DuplicateParticipationError,
-        ) as exc:
+        except participation_service.CTFNotFoundError as exc:
+            await interaction.response.send_message(str(exc), ephemeral=True)
+            return
+        except participation_service.DuplicateParticipationError:
+            pass
+
+        async with session_factory() as session:
+            resource = await resources_repo.get_by_ctf_id(session, ctf_id)
+        if resource is None or resource.role_id is None:
+            await interaction.response.send_message(
+                f"CTF #{ctf_id} has no Discord role yet. Run /setupctf first.", ephemeral=True
+            )
+            return
+        try:
+            await discord_resources.assign_role(
+                interaction.client,
+                guild_id=interaction.guild_id,
+                role_id=resource.role_id,
+                user_ids=[member.id],
+            )
+        except discord_resources.DiscordResourceError as exc:
             await interaction.response.send_message(str(exc), ephemeral=True)
             return
 

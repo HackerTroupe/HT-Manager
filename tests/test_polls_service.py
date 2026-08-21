@@ -18,6 +18,10 @@ START = datetime(2026, 9, 1, tzinfo=UTC)
 END = datetime(2026, 9, 3, tzinfo=UTC)
 
 
+async def _fake_configure_ctf_forum(*args: object, **kwargs: object) -> None:
+    return None
+
+
 async def _make_ctf(session: AsyncSession, name: str) -> int:
     ctf = await ctfs_service.create_draft(
         session, actor_discord_id=1, name=name, year=2026, start_at=START, end_at=END
@@ -231,8 +235,9 @@ async def test_setup_ctf_resources_creates_role_workspace_and_participation(
         calls["role_name"] = name
         return 555
 
-    async def fake_create_ctf_forum(bot, *, guild_id, category_id, ctf_name):
+    async def fake_create_ctf_forum(bot, *, guild_id, category_id, ctf_name, role_id):
         calls["forum_name"] = ctf_name
+        calls["forum_role_id"] = role_id
         return 666
 
     async def fake_create_general_post(bot, *, guild_id, forum_channel_id, ctf_name):
@@ -244,6 +249,9 @@ async def test_setup_ctf_resources_creates_role_workspace_and_participation(
 
     monkeypatch.setattr(polls_service.discord_resources, "create_role", fake_create_role)
     monkeypatch.setattr(polls_service.discord_resources, "create_ctf_forum", fake_create_ctf_forum)
+    monkeypatch.setattr(
+        polls_service.discord_resources, "configure_ctf_forum", _fake_configure_ctf_forum
+    )
     monkeypatch.setattr(
         polls_service.discord_resources, "create_general_post", fake_create_general_post
     )
@@ -267,6 +275,7 @@ async def test_setup_ctf_resources_creates_role_workspace_and_participation(
 
     assert calls["assigned"] == (555, [10, 11])
     assert calls["general_post_forum"] == 666
+    assert calls["forum_role_id"] == 555
     async with db_session_factory() as session:
         ctf = await ctfs_repo.get(session, ctf_a)
         assert ctf.status is CTFStatus.ACTIVE
@@ -290,7 +299,7 @@ async def test_setup_ctf_resources_is_idempotent_once_active(
         call_count += 1
         return 555
 
-    async def fake_create_ctf_forum(bot, *, guild_id, category_id, ctf_name):
+    async def fake_create_ctf_forum(bot, *, guild_id, category_id, ctf_name, role_id):
         return 666
 
     async def fake_create_general_post(bot, *, guild_id, forum_channel_id, ctf_name):
@@ -301,6 +310,9 @@ async def test_setup_ctf_resources_is_idempotent_once_active(
 
     monkeypatch.setattr(polls_service.discord_resources, "create_role", fake_create_role)
     monkeypatch.setattr(polls_service.discord_resources, "create_ctf_forum", fake_create_ctf_forum)
+    monkeypatch.setattr(
+        polls_service.discord_resources, "configure_ctf_forum", _fake_configure_ctf_forum
+    )
     monkeypatch.setattr(
         polls_service.discord_resources, "create_general_post", fake_create_general_post
     )
@@ -325,7 +337,7 @@ async def test_force_start_activates_a_draft_ctf_without_a_poll(
     async def fake_create_role(bot, *, guild_id, name):
         return 555
 
-    async def fake_create_ctf_forum(bot, *, guild_id, category_id, ctf_name):
+    async def fake_create_ctf_forum(bot, *, guild_id, category_id, ctf_name, role_id):
         return 666
 
     async def fake_create_general_post(bot, *, guild_id, forum_channel_id, ctf_name):
@@ -338,6 +350,9 @@ async def test_force_start_activates_a_draft_ctf_without_a_poll(
 
     monkeypatch.setattr(polls_service.discord_resources, "create_role", fake_create_role)
     monkeypatch.setattr(polls_service.discord_resources, "create_ctf_forum", fake_create_ctf_forum)
+    monkeypatch.setattr(
+        polls_service.discord_resources, "configure_ctf_forum", _fake_configure_ctf_forum
+    )
     monkeypatch.setattr(
         polls_service.discord_resources, "create_general_post", fake_create_general_post
     )
@@ -399,7 +414,7 @@ async def test_setup_ctf_resources_records_role_before_creating_workspace(
         role_calls += 1
         return 555
 
-    async def fake_create_ctf_forum(bot, *, guild_id, category_id, ctf_name):
+    async def fake_create_ctf_forum(bot, *, guild_id, category_id, ctf_name, role_id):
         if fail_forum:
             raise discord_resources.DiscordResourceError("category is on fire")
         return 666
@@ -412,6 +427,9 @@ async def test_setup_ctf_resources_records_role_before_creating_workspace(
 
     monkeypatch.setattr(polls_service.discord_resources, "create_role", fake_create_role)
     monkeypatch.setattr(polls_service.discord_resources, "create_ctf_forum", fake_create_ctf_forum)
+    monkeypatch.setattr(
+        polls_service.discord_resources, "configure_ctf_forum", _fake_configure_ctf_forum
+    )
     monkeypatch.setattr(
         polls_service.discord_resources, "create_general_post", fake_create_general_post
     )
