@@ -41,6 +41,17 @@ async def delete_poll(session: AsyncSession, poll: Poll) -> None:
     await session.flush()
 
 
+async def delete_history_for_ctf(session: AsyncSession, ctf_id: int) -> None:
+    votes = await session.execute(select(PollVote).where(PollVote.ctf_id == ctf_id))
+    for vote in votes.scalars().all():
+        await session.delete(vote)
+
+    options = await session.execute(select(PollOption).where(PollOption.ctf_id == ctf_id))
+    for option in options.scalars().all():
+        await session.delete(option)
+    await session.flush()
+
+
 async def add_vote(session: AsyncSession, vote: PollVote) -> PollVote:
     session.add(vote)
     await session.flush()
@@ -67,6 +78,15 @@ async def list_voter_ids_for_ctf(session: AsyncSession, ctf_id: int) -> list[int
 
 
 async def get_poll_for_ctf(session: AsyncSession, ctf_id: int) -> Poll | None:
+    result = await session.execute(
+        select(Poll)
+        .join(PollOption, PollOption.poll_id == Poll.id)
+        .where(PollOption.ctf_id == ctf_id)
+    )
+    return result.scalars().first()
+
+
+async def get_drafting_poll_for_ctf(session: AsyncSession, ctf_id: int) -> Poll | None:
     result = await session.execute(
         select(Poll)
         .join(PollOption, PollOption.poll_id == Poll.id)

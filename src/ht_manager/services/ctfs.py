@@ -6,7 +6,6 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ht_manager.db.models.ctf import CTF, CTFStatus
-from ht_manager.db.models.poll import PollStatus
 from ht_manager.db.repositories import audit_log as audit_log_repo
 from ht_manager.db.repositories import ctfs as ctfs_repo
 from ht_manager.db.repositories import polls as polls_repo
@@ -195,15 +194,14 @@ async def delete_draft(session: AsyncSession, *, actor_discord_id: int, ctf_id: 
             f"CTF {ctf_id} is {ctf.status.value}, not draft; use /archivectf or the CANCELLED path"
         )
 
-    poll = await polls_repo.get_poll_for_ctf(session, ctf_id)
+    poll = await polls_repo.get_drafting_poll_for_ctf(session, ctf_id)
     if poll is not None:
-        if poll.status is not PollStatus.DRAFTING:
-            raise InvalidCTFStateError(f"CTF {ctf_id} is attached to a published poll")
         from ht_manager.services import polls as polls_service
 
         await polls_service.cancel_draft(
             session, actor_discord_id=actor_discord_id, poll_id=poll.id
         )
+    await polls_repo.delete_history_for_ctf(session, ctf_id)
 
     before = _snapshot(ctf)
     await ctfs_repo.delete(session, ctf)
