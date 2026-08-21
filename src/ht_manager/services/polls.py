@@ -209,6 +209,7 @@ async def finalize(
     actor_discord_id: int,
     poll_id: int,
     votes: dict[int, list[int]],
+    vote_counts: dict[int, int] | None = None,
 ) -> Poll:
     """Tallies votes and closes the poll per spec §7.3: a single leader wins
     (`SELECTED`), a tie among leaders needs `/resolvepoll` (`TIED`), and zero
@@ -225,7 +226,7 @@ async def finalize(
                 session, PollVote(poll_id=poll.id, ctf_id=ctf_id, discord_user_id=discord_user_id)
             )
 
-    counts = {ctf_id: len(voter_ids) for ctf_id, voter_ids in votes.items()}
+    counts = vote_counts or {ctf_id: len(voter_ids) for ctf_id, voter_ids in votes.items()}
     total_votes = sum(counts.values())
 
     options = await polls_repo.list_options(session, poll.id)

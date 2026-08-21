@@ -15,6 +15,10 @@ from ht_manager.services import polls as polls_service
 logger = logging.getLogger(__name__)
 
 
+def _ctf_by_answer_id(options) -> dict[int, int]:
+    return {option.option_index + 1: option.ctf_id for option in options}
+
+
 async def close_expired_polls(bot: Bot, session_factory: async_sessionmaker[AsyncSession]) -> None:
     """Finalizes any `OPEN` poll past its `closes_at` (spec §7.1 step 12).
 
@@ -39,21 +43,33 @@ async def close_expired_polls(bot: Bot, session_factory: async_sessionmaker[Asyn
 
         async with session_factory() as session:
             options = await polls_repo.list_options(session, poll.id)
-        ctf_by_index = {option.option_index: option.ctf_id for option in options}
+        ctf_by_answer_id = _ctf_by_answer_id(options)
 
-        votes: dict[int, list[int]] = {ctf_id: [] for ctf_id in ctf_by_index.values()}
-        for index, answer in enumerate(message.poll.answers):
-            ctf_id = ctf_by_index.get(index)
+        votes: dict[int, list[int]] = {ctf_id: [] for ctf_id in ctf_by_answer_id.values()}
+        vote_counts: dict[int, int] = {ctf_id: 0 for ctf_id in ctf_by_answer_id.values()}
+        for answer in message.poll.answers:
+            ctf_id = ctf_by_answer_id.get(answer.id)
             if ctf_id is None:
                 continue
+            vote_counts[ctf_id] = answer.vote_count
             async for voter in answer.voters():
                 if voter.bot:
                     continue
                 votes[ctf_id].append(voter.id)
 
+        logger.info(
+            "Extracted votes for poll_id=%s: %s",
+            poll.id,
+            {answer.id: answer.vote_count for answer in message.poll.answers},
+        )
+
         async with session_factory() as session, session.begin():
             finalized = await polls_service.finalize(
-                session, actor_discord_id=bot.user.id, poll_id=poll.id, votes=votes
+                session,
+                actor_discord_id=bot.user.id,
+                poll_id=poll.id,
+                votes=votes,
+                vote_counts=vote_counts,
             )
             summary = await _summarize(session, finalized)
 

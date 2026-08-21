@@ -6,8 +6,10 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ht_manager.db.models.ctf import CTF, CTFStatus
+from ht_manager.db.models.poll import PollStatus
 from ht_manager.db.repositories import audit_log as audit_log_repo
 from ht_manager.db.repositories import ctfs as ctfs_repo
+from ht_manager.db.repositories import polls as polls_repo
 from ht_manager.services.ctftime import CTFTimeEvent
 
 # Spec §15.1: transitions not listed here are invalid and must be rejected.
@@ -193,6 +195,16 @@ async def delete_draft(session: AsyncSession, *, actor_discord_id: int, ctf_id: 
             f"CTF {ctf_id} is {ctf.status.value}, not draft; use /archivectf or the CANCELLED path"
         )
 
+    poll = await polls_repo.get_poll_for_ctf(session, ctf_id)
+    if poll is not None:
+        if poll.status is not PollStatus.DRAFTING:
+            raise InvalidCTFStateError(f"CTF {ctf_id} is attached to a published poll")
+        from ht_manager.services import polls as polls_service
+
+        await polls_service.cancel_draft(
+            session, actor_discord_id=actor_discord_id, poll_id=poll.id
+        )
+
     before = _snapshot(ctf)
     await ctfs_repo.delete(session, ctf)
     await audit_log_repo.record(
@@ -204,6 +216,46 @@ async def delete_draft(session: AsyncSession, *, actor_discord_id: int, ctf_id: 
         before=before,
         after=None,
     )
+
+
+async def restore_cancelled_draft(
+    session: AsyncSession, *, actor_discord_id: int, ctf_id: int
+) -> CTF:
+    ctf = await ctfs_repo.get(session, ctf_id)
+    if ctf is None:
+        raise CTFNotFoundError(f"CTF {ctf_id} not found")
+    if ctf.status is not CTFStatus.CANCELLED:
+        raise InvalidCTFStateError(
+            f"CTF {ctf_id} is {ctf.status.value}; only cancelled CTFs can be restored"
+        )
+
+    before = {"status": ctf.status.value}
+    ctf.status = CTFStatus.DRAFT
+    await session.flush()
+    await audit_log_repo.record(
+        session,
+        discord_user_id=actor_discord_id,
+        action="ctf_status_changed",
+        target_table="ctfs",
+        target_id=ctf.id,
+        before=before,
+        after={"status": ctf.status.value},
+    )
+    return ctf
+
+
+async def clear_latest_drafts(
+    session: AsyncSession, *, actor_discord_id: int, count: int
+) -> list[int]:
+    if count < 1:
+        raise ValueError("count must be at least 1")
+
+    drafts = await ctfs_repo.list_latest_drafts(session, limit=count)
+    deleted_ids: list[int] = []
+    for ctf in drafts:
+        await delete_draft(session, actor_discord_id=actor_discord_id, ctf_id=ctf.id)
+        deleted_ids.append(ctf.id)
+    return deleted_ids
 
 
 async def transition(

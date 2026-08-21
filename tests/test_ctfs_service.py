@@ -81,6 +81,60 @@ async def test_delete_draft_refuses_non_draft(db_session: AsyncSession) -> None:
         await ctfs_service.delete_draft(db_session, actor_discord_id=1, ctf_id=ctf.id)
 
 
+async def test_restore_cancelled_draft(db_session: AsyncSession) -> None:
+    ctf = await _make_draft(db_session)
+    await ctfs_service.transition(
+        db_session, actor_discord_id=1, ctf=ctf, new_status=CTFStatus.CANCELLED
+    )
+
+    restored = await ctfs_service.restore_cancelled_draft(
+        db_session, actor_discord_id=1, ctf_id=ctf.id
+    )
+
+    assert restored.status is CTFStatus.DRAFT
+
+
+async def test_clear_latest_drafts_deletes_newest_first(db_session: AsyncSession) -> None:
+    oldest = await _make_draft(db_session, name="Oldest")
+    middle = await _make_draft(db_session, name="Middle")
+    newest = await _make_draft(db_session, name="Newest")
+
+    deleted_ids = await ctfs_service.clear_latest_drafts(
+        db_session, actor_discord_id=1, count=2
+    )
+
+    assert deleted_ids == [newest.id, middle.id]
+    from ht_manager.db.repositories import ctfs as ctfs_repo
+
+    assert await ctfs_repo.get(db_session, oldest.id) is not None
+    assert await ctfs_repo.get(db_session, middle.id) is None
+    assert await ctfs_repo.get(db_session, newest.id) is None
+
+
+async def test_clear_draft_ignores_historical_poll_options(db_session: AsyncSession) -> None:
+    ctf = await _make_draft(db_session)
+    from ht_manager.db.models.poll import Poll, PollOption, PollStatus
+
+    poll = Poll(guild_id=1, channel_id=1, status=PollStatus.CANCELLED)
+    db_session.add(poll)
+    await db_session.flush()
+    db_session.add(PollOption(poll_id=poll.id, ctf_id=ctf.id, option_index=0))
+    await db_session.flush()
+
+    await ctfs_service.transition(
+        db_session, actor_discord_id=1, ctf=ctf, new_status=CTFStatus.CANCELLED
+    )
+
+    await ctfs_service.restore_cancelled_draft(
+        db_session, actor_discord_id=1, ctf_id=ctf.id
+    )
+    deleted_ids = await ctfs_service.clear_latest_drafts(
+        db_session, actor_discord_id=1, count=1
+    )
+
+    assert deleted_ids == [ctf.id]
+
+
 async def test_transition_rejects_invalid_target(db_session: AsyncSession) -> None:
     ctf = await _make_draft(db_session)
     with pytest.raises(ctfs_service.InvalidCTFTransitionError):

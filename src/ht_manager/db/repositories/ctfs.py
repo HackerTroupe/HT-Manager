@@ -48,6 +48,16 @@ async def list_page(session: AsyncSession, *, limit: int, offset: int) -> list[C
     return list(result.scalars().all())
 
 
+async def list_latest_drafts(session: AsyncSession, *, limit: int) -> list[CTF]:
+    result = await session.execute(
+        select(CTF)
+        .where(CTF.status == CTFStatus.DRAFT)
+        .order_by(CTF.id.desc())
+        .limit(limit)
+    )
+    return list(result.scalars().all())
+
+
 async def count(session: AsyncSession) -> int:
     result = await session.execute(select(func.count()).select_from(CTF))
     return result.scalar_one()

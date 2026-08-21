@@ -70,6 +70,6 @@ async def get_poll_for_ctf(session: AsyncSession, ctf_id: int) -> Poll | None:
     result = await session.execute(
         select(Poll)
         .join(PollOption, PollOption.poll_id == Poll.id)
-        .where(PollOption.ctf_id == ctf_id)
+        .where(PollOption.ctf_id == ctf_id, Poll.status == PollStatus.DRAFTING)
     )
     return result.scalars().first()
